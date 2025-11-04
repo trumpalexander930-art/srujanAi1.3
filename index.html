@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SrujanAI Chat</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Roboto&display=swap');
+
+  body {
+    font-family: 'Roboto', Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-image: url('/download.jpeg'); /* Ensure 'download.jpeg' is in your static folder */
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    color: #f0f0f0;
+  }
+
+  #chat-container {
+    flex-grow: 1;
+    margin: 20px auto 80px auto;
+    max-width: 800px;
+    width: 90%;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 12px;
+    padding: 25px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .message {
+    padding: 12px 18px;
+    border-radius: 15px;
+    margin-bottom: 15px;
+    max-width: 70%;
+    line-height: 1.4;
+    word-wrap: break-word;
+  }
+
+  .user-msg {
+    background: #2962ff;
+    color: white;
+    align-self: flex-end;
+  }
+
+  .ai-msg {
+    background: #f1f1f1;
+    color: #222;
+    align-self: flex-start;
+  }
+
+  #input-area {
+    position: fixed;
+    bottom: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 800px;
+    width: 90%;
+    display: flex;
+    align-items: center;
+    background: rgba(240, 240, 240, 0.9);
+    border-radius: 25px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    padding: 8px 12px;
+  }
+
+  #query-input {
+    flex-grow: 1;
+    border: none;
+    padding: 12px 20px;
+    font-size: 16px;
+    border-radius: 25px;
+    outline: none;
+    background: transparent;
+    color: #333;
+    font-weight: 500;
+  }
+
+  #query-input::placeholder {
+    color: #aaa;
+    font-style: italic;
+  }
+
+  #send-btn {
+    background: #888888cc; /* gray translucent when disabled */
+    border: 2px solid #888888cc;
+    padding: 10px 14px;
+    border-radius: 6px;
+    margin-left: 8px;
+    cursor: not-allowed;
+    font-size: 22px;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+    width: 40px;
+    height: 40px;
+  }
+
+  #send-btn.enabled {
+    background: #0099cc; /* darker cyan */
+    border-color: #0099cc;
+    cursor: pointer;
+    color: white;
+  }
+
+  #send-btn.enabled:hover {
+    background: #007799;
+    border-color: #007799;
+  }
+
+  #history-btn {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 10px 15px;
+    background: rgba(128, 128, 128, 0.7);
+    border: none;
+    border-radius: 30px;
+    color: white;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.3s ease;
+  }
+
+  #history-btn:hover {
+    background: rgba(100, 100, 100, 0.9);
+  }
+
+  #history-panel {
+    position: fixed;
+    right: 20px;
+    top: 60px;
+    width: 320px;
+    max-height: 400px;
+    overflow-y: auto;
+    background: white;
+    border-radius: 10px;
+    padding: 15px;
+    display: none;
+    color: black;
+  }
+
+  #history-panel h3 {
+    margin-top: 0;
+  }
+
+  .history-entry {
+    border-bottom: 1px solid #ddd;
+    padding: 8px 0;
+  }
+
+  .history-entry:last-child {
+    border-bottom: none;
+  }
+
+  .history-query {
+    font-weight: bold;
+  }
+</style>
+</head>
+<body>
+
+  <div id="chat-container" aria-live="polite" aria-atomic="true"></div>
+
+  <div id="input-area">
+    <input id="query-input" type="text" placeholder="Type your question..." autocomplete="off" spellcheck="false" aria-label="Type your question" />
+    <button id="send-btn" disabled title="Type to send" aria-label="Send prompt">&#8593;</button>
+  </div>
+
+  <button id="history-btn" aria-controls="history-panel" aria-expanded="false">Search History</button>
+
+  <div id="history-panel" role="region" aria-live="polite" aria-atomic="true">
+    <h3>Search History</h3>
+    <div id="history-list"></div>
+  </div>
+
+<script>
+  const chatContainer = document.getElementById('chat-container');
+  const queryInput = document.getElementById('query-input');
+  const sendBtn = document.getElementById('send-btn');
+  const historyBtn = document.getElementById('history-btn');
+  const historyPanel = document.getElementById('history-panel');
+  const historyList = document.getElementById('history-list');
+
+  let searchHistory = [];
+  let typingAnimationRunning = false;
+  let stopTyping = false;
+
+  // Enable/disable send button based on input value when not answering
+  queryInput.addEventListener('input', () => {
+    if (queryInput.value.trim().length > 0 && !typingAnimationRunning) {
+      sendBtn.disabled = false;
+      sendBtn.classList.add('enabled');
+      sendBtn.innerHTML = '&#8593;'; // Up arrow for send
+      sendBtn.title = "Send prompt";
+    } else if (!typingAnimationRunning) {
+      sendBtn.disabled = true;
+      sendBtn.classList.remove('enabled');
+      sendBtn.innerHTML = '&#8593;';
+      sendBtn.title = "Type to send";
+    }
+  });
+
+  function addMessage(text, isUser) {
+    const msgDiv = document.createElement('div');
+    msgDiv.classList.add('message', isUser ? 'user-msg' : 'ai-msg');
+    msgDiv.textContent = text;
+    chatContainer.appendChild(msgDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
+  function toggleHistory() {
+    const isVisible = historyPanel.style.display === 'block';
+    historyPanel.style.display = isVisible ? 'none' : 'block';
+    historyBtn.setAttribute('aria-expanded', !isVisible);
+    if (!isVisible) {
+      renderHistory();
+    }
+  }
+
+  function renderHistory() {
+    historyList.innerHTML = '';
+    searchHistory.forEach(entry => {
+      const div = document.createElement('div');
+      div.classList.add('history-entry');
+      div.innerHTML = `<div class="history-query">Q: ${entry.query}</div><div>A: ${entry.answer}</div>`;
+      historyList.appendChild(div);
+    });
+  }
+
+  async function sendQuery() {
+    if (typingAnimationRunning) return; // Do nothing if already running
+
+    const query = queryInput.value.trim();
+    if (!query) return;
+
+    // Disable input and change button to pause
+    typingAnimationRunning = true;
+    stopTyping = false;
+    queryInput.disabled = true;
+    sendBtn.innerHTML = '⏸'; // Pause icon
+    sendBtn.title = "Pause answer";
+    sendBtn.disabled = false;
+    sendBtn.classList.add('enabled');
+
+    addMessage(query, true);
+    queryInput.value = '';
+    addMessage('SrujanAI is typing...', false);
+
+    try {
+      const response = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: query }),
+      });
+      const data = await response.json();
+
+      if (chatContainer.lastChild && chatContainer.lastChild.textContent === 'SrujanAI is typing...') {
+        chatContainer.removeChild(chatContainer.lastChild);
+      }
+
+      const answer = data.answer || 'Sorry, no response.';
+      
+      searchHistory.push({ query: query, answer: answer });
+      await printTypingAnimation(answer);
+
+    } catch (error) {
+      console.error('Error fetching answer:', error);
+      addMessage('Failed to get response from AI.', false);
+    }
+
+    // Reset input and button after finishing or stopped
+    typingAnimationRunning = false;
+    queryInput.disabled = false;
+    sendBtn.disabled = (queryInput.value.trim().length === 0);
+    if (sendBtn.disabled) {
+      sendBtn.classList.remove('enabled');
+    }
+    sendBtn.innerHTML = '&#8593;'; // Up arrow for send
+    sendBtn.title = "Send prompt";
+  }
+
+  async function printTypingAnimation(text) {
+    let currentText = '';
+    for (const char of text) {
+      if (stopTyping) break;
+      currentText += char;
+      if (chatContainer.lastChild && chatContainer.lastChild.classList.contains('ai-msg')) {
+        chatContainer.lastChild.textContent = currentText;
+      } else {
+        addMessage(currentText, false);
+      }
+      await new Promise(r => setTimeout(r, 25));
+    }
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
+  // Button handler for both send and pause
+  sendBtn.addEventListener('click', () => {
+    if (typingAnimationRunning) {
+      // Pause pressed - stop the answer
+      stopTyping = true;
+    } else {
+      // Send pressed - start answer
+      sendQuery();
+    }
+  });
+
+  // Allow Enter key to send only if not typing
+  queryInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !typingAnimationRunning && sendBtn.classList.contains('enabled')) {
+      sendQuery();
+    }
+  });
+
+  historyBtn.addEventListener('click', toggleHistory);
+</script>
+
+</body>
+</html>
